@@ -23,11 +23,19 @@ while True:  # Constant loop, listening for messages
 	opcode, seq_num, payload_length, checksum, payload = parse_packet(data)
 	print("Received packet from ", addr)
 
+	# SYN/SYNACK =======================================================
 	if opcode == OP_SYN:
 		print("\nReceived SYN from ", addr)
-		sessions[addr] = True
-		synack_packet = build_packet(OP_SYNACK, 0)
-		sock.sendto(synack_packet, addr)
+
+		if addr in sessions:
+			print("Error: Unexpected packet")
+
+			error_packet = build_packet(OP_ERROR, ER_UNEXPECTED)
+			sock.sendto(error_packet, addr)
+		else:
+			sessions[addr] = True
+			synack_packet = build_packet(OP_SYNACK, 0)
+			sock.sendto(synack_packet, addr)
 
 	# CLIENT TERMINATION (FIN/FINACK) ===================================
 	elif opcode == OP_FIN:
@@ -35,8 +43,10 @@ while True:  # Constant loop, listening for messages
 
 		# Removing client from sessions dictionary
 		if addr not in sessions:
-			print("Error: Unexpected packet")  # -------------------- error
-			# TODO: Send error packet
+			print("Error: Unexpected packet")
+
+			error_packet = build_packet(OP_ERROR, ER_UNEXPECTED)
+			sock.sendto(error_packet, addr)
 		else:
 			sessions.pop(addr)
 			print(sessions)
@@ -45,7 +55,8 @@ while True:  # Constant loop, listening for messages
 			finack_packet = build_packet(OP_FINACK, 0)
 			sock.sendto(finack_packet, addr)
 
-	elif opcode == OP_RRQ:
+	# RRQ ==============================================================
+	elif opcode == OP_RRQ: 
 		filename = payload.decode()
 		print(f"Client requests file: {filename}")
 

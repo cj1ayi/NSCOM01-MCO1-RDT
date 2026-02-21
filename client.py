@@ -26,10 +26,14 @@ for i in range(3):
 		sock.sendto(SYN, server_addr)
 
 		data, _ = sock.recvfrom(1024)
-		opcode, _, _, _, _ = parse_packet(data)
+		opcode, ermsg, _, _, _ = parse_packet(data)
+
 		if opcode == OP_SYNACK:  
 			connected = True
 			break
+
+		elif opcode == OP_ERROR:
+			print_error(ermsg)
 
 	except socket.timeout:
 		print("Failed to reach server. Retrying...")
@@ -57,10 +61,14 @@ def close_socket():
 			sock.sendto(FIN, server_addr)
 
 			data, _ = sock.recvfrom(1024)
-			opcode, _, _, _, _ = parse_packet(data)
+			opcode, ermsg, _, _, _ = parse_packet(data)
+
 			if opcode == OP_FINACK:
 				fin_sent = True
 				break
+
+			elif opcode == OP_ERROR:
+				print_error(ermsg)
 
 		except socket.timeout:
 			print("Failed to reach server. Retrying...")
@@ -70,6 +78,9 @@ def close_socket():
 
 	sock.close()
 
+
+
+# DOWNLOAD (RRQ) ================================================
 def download():
 	filename = input("Enter filename: ").strip()
 	rrq = build_packet(OP_RRQ, 0, filename.encode())

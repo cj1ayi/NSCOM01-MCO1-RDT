@@ -12,6 +12,12 @@ OP_FIN    = 7
 OP_FINACK = 8
 OP_ERROR  = 9
 
+## error codes
+ER_TIMEOUT = 0
+ER_FNF = 1
+ER_FAE = 2
+ER_UNEXPECTED = 3
+
 def compute_checksum(payload):
     return sum(payload) & 0xFFFF
 
@@ -24,3 +30,18 @@ def parse_packet(data):
     opcode, seq_num, payload_length, checksum = struct.unpack("!BIHH",data[:9])
     payload = data[9:]
     return opcode, seq_num, payload_length, checksum, payload
+
+def print_error(ermsg):
+    print("Error received.")
+    match ermsg:
+        case ER_TIMEOUT:
+            print("Error type: Timeout")
+
+        case ER_FNF:
+            print("Error type: File not found")
+
+        case ER_FAE:
+            print("Error type: File already exists")
+
+        case ER_UNEXPECTED:
+            print("Error type: Unexpected packet.")
