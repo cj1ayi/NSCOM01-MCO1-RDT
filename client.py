@@ -87,11 +87,12 @@ def download():
 	sock.sendto(rrq, server_addr)
 
 	data, _ = sock.recvfrom(1024)
-	opcode, _, _, _, payload = parse_packet(data)
+	opcode, ermsg, _, _, payload = parse_packet(data)
 
 	if opcode == OP_ERROR:
-		print("Error:", payload.decode())
+		print_error(ermsg)
 		return
+
 	elif opcode == OP_SACK:
 		# send ACK seq=0 (so we dont have to use ACK#0 lol)
 		ack = build_packet(OP_ACK, 0)
@@ -100,23 +101,33 @@ def download():
 		file_data = b"" # store all chunks here
 
 		while True:
-				data, _ = sock.recvfrom(1024)
-				opcode, seq_num, _, checksum, payload = parse_packet(data)
+			data, _ = sock.recvfrom(1024)
+			opcode, seq_num, _, checksum, payload = parse_packet(data)
 
-				if opcode == OP_DATA:
-					# verify checksum
-					if compute_checksum(payload) != checksum:
-						continue # server retransmit
-					file_data += payload
-					ack = build_packet(OP_ACK, seq_num)
-					sock.sendto(ack, server_addr)
+			if opcode == OP_DATA:
 
-				elif opcode == OP_FIN:
-					# save file
-					with open(f"downloads/{filename}", "wb") as f:
-						f.write(file_data)
-					print(f"Downloaded {filename} successfully!")
-					break
+				# verify checksum
+				if compute_checksum(payload) != checksum:
+					error = build_packet(OP_ERROR, ER_CHECKSUM)
+					sock.sendto(error, server_addr)
+					continue # server retransmit
+
+				file_data += payload
+				ack = build_packet(OP_ACK, seq_num)
+				sock.sendto(ack, server_addr)
+
+			elif opcode == OP_FIN:
+				# save file
+				with open(f"downloads/{filename}", "wb") as f:
+					f.write(file_data)
+				print(f"Downloaded {filename} successfully!")
+
+				finack = build_packet(OP_FINACK, 0)
+				sock.sendto(finack_packet, addr)
+				break
+
+			elif opcode == OP_ERROR:
+				print_error(seq_num)
 
 
 

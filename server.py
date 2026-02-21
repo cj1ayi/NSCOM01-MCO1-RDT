@@ -62,8 +62,9 @@ while True:  # Constant loop, listening for messages
 
 		filepath = os.path.join("server_files", filename)
 		if not os.path.exists(filepath):
-			error = build_packet(OP_ERROR, 0, b"File not found")
+			error = build_packet(OP_ERROR, ER_FNF)
 			sock.sendto(error, addr)
+
 		else:
 			filesize = os.path.getsize(filepath)
 			sack = build_packet(OP_SACK, 0, str(filesize).encode())
@@ -85,7 +86,7 @@ while True:  # Constant loop, listening for messages
 						packet = build_packet(OP_DATA, seq, chunk)
 						sock.settimeout(5)
 
-						for attempt in range(3):
+						for attempt in range(5):
 							try:
 								sock.sendto(packet, addr)
 								data, _ = sock.recvfrom(1024)
@@ -94,12 +95,33 @@ while True:  # Constant loop, listening for messages
 								if opcode == OP_ACK and seq_num == seq:
 									seq += 1
 									break
+
+								elif opcode == OP_ERROR:
+									print_error(seq_num)
+
 							except socket.timeout:
 								print(f"Timeout, resending DATA#{seq}...")
+						else:
+							error = build_packet(OP_ERROR, ER_TIMEOUT)
+							sock.sendto(error, addr)
 
 				# send FIN
 				fin = build_packet(OP_FIN, 0)
-				sock.sendto(fin, addr)
+				for attempt in range(3):
+					sock.sendto(fin, addr)
+					data, _ = sock.recvfrom(1024)
+					opcode, ermsg, _, _, _ = parse_packet(data)
+
+					if opcode == OP_FINACK:
+						break
+
+					elif opcode	== OP_ERROR:
+						print_error(ermsg)
+				sessions.pop(addr)
+
 				sock.settimeout(None)
+
+			elif opcode == OP_ERROR:
+				print_error(seq_num)
 
 						
