@@ -4,44 +4,41 @@ from protocol import *
 
 # INITIALIZATION ==========================================================
 # Creating server socket
-self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-self.sock.bind(('127.0.0.1', 8888))
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.bind(('127.0.0.1', 8888))
 
 """ P.S., server currently listening on port 8888
 	TFTP uses port 69 but maybe since this is supposed to be our own protocol
-	it can be different? But anws just consider it a placeholder for now """
+	it can be different? But anyway just consider it a placeholder for now """
 
 # Session info is stored here
-self.sessions = {}
-
-
+sessions = {}
 
 # MAIN LOOP ==============================================================
 print("Server is active and listening on port 8888!")
 
-		while True: # Constant loop, listening for messages
-			data, addr = self.sock.recvfrom(1024)
-			opcode, seq_num, payload_length, checksum, payload = parse_packet(data)
-			print("Received packet from ", addr)
+while True:  # Constant loop, listening for messages
+	data, addr = sock.recvfrom(1024)
+	opcode, seq_num, payload_length, checksum, payload = parse_packet(data)
+	print("Received packet from ", addr)
 
-			if opcode == OP_SYN:
-				print("\nReceived SYN from ", addr)
-				SYNACK = build_packet(OP_SYNACK, 0)
-				self.sock.sendto(SYNACK, addr)
-
+	if opcode == OP_SYN:
+		print("\nReceived SYN from ", addr)
+		synack_packet = build_packet(OP_SYNACK, 0)
+		sock.sendto(synack_packet, addr)
 
 	# CLIENT TERMINATION (FIN/FINACK) ===================================
-	elif int.from_bytes(data[:2]) == 7:
+	elif opcode == OP_FIN:
 		print("\nReceived FIN from ", addr)
 
 		# Removing client from sessions dictionary
-		if addr not in self.sessions:
-			print("Error: Unexpected packet") # -------------------- error
+		if addr not in sessions:
+			print("Error: Unexpected packet")  # -------------------- error
 			# TODO: Send error packet
 		else:
-			self.sessions.pop(addr)
-			print(self.sessions)
+			sessions.pop(addr)
+			print(sessions)
 			print(addr, " removed from sessions.")
 
-			FINACK = (b'\x08')
-			self.sock.sendto(FINACK, addr)
+			finack_packet = build_packet(OP_FINACK, 0)
+			sock.sendto(finack_packet, addr)

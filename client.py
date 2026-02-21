@@ -13,22 +13,22 @@ sock.bind(('', 0))
 
 
 # HANDSHAKE (SYN/SYNACK) ========================================
-# SYN and SYNACK trading. Check if server is active, basically
+# SYN and SYN-ACK trading. Check if server is active, basically
 print("Attempting to reach server...")
 sock.settimeout(3)
 
-		# Three attempts to reach server until client gives up.
-		connected = False
-		for i in range(3):
-			try:
-				SYN = build_packet(OP_SYN, 0)
-				self.sock.sendto(SYN, self.server_addr)
+# Three attempts to reach server until client gives up.
+connected = False
+for i in range(3):
+	try:
+		SYN = build_packet(OP_SYN, 0)
+		sock.sendto(SYN, server_addr)
 
-				data, _ = self.sock.recvfrom(1024)
-				opcode, _, _, _, _ = parse_packet(data)
-				if opcode == OP_SYNACK:
-					connected = True
-					break
+		data, _ = sock.recvfrom(1024)
+		opcode, _, _, _, _ = parse_packet(data)
+		if opcode == OP_SYNACK:  
+			connected = True
+			break
 
 	except socket.timeout:
 		print("Failed to reach server. Retrying...")
@@ -49,11 +49,12 @@ def close_socket():
 	sock.settimeout(5)
 	for i in range(3):
 		try:
-			FIN = (b'\x07')
+			FIN = build_packet(OP_FIN, 0)
 			sock.sendto(FIN, server_addr)
 
 			data, _ = sock.recvfrom(1024)
-			if int.from_bytes(data[:2]) == 8:
+			opcode, _, _, _, _ = parse_packet(data)
+			if opcode == OP_FINACK:
 				fin_sent = True
 				break
 
