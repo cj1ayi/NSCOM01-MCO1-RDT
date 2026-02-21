@@ -1,5 +1,6 @@
 """ Main client file """
 import socket
+import os
 from protocol import *
 
 # INITIALIZATION =================================================
@@ -37,6 +38,9 @@ if not connected:
 	print("Failed to reach server. Please check if server is running.")
 else:
 	print("\nServer connected!")
+	sock.settimeout(None)
+
+
 
 
 
@@ -66,6 +70,43 @@ def close_socket():
 
 	sock.close()
 
+def download():
+	filename = input("Enter filename: ").strip()
+	rrq = build_packet(OP_RRQ, 0, filename.encode())
+	sock.sendto(rrq, server_addr)
+
+	data, _ = sock.recvfrom(1024)
+	opcode, _, _, _, payload = parse_packet(data)
+
+	if opcode == OP_ERROR:
+		print("Error:", payload.decode())
+		return
+	elif opcode == OP_SACK:
+		# send ACK seq=0 (so we dont have to use ACK#0 lol)
+		ack = build_packet(OP_ACK, 0)
+		sock.sendto(ack, server_addr)
+		# loop receiving data packets
+		file_data = b"" # store all chunks here
+
+		while True:
+				data, _ = sock.recvfrom(1024)
+				opcode, seq_num, _, checksum, payload = parse_packet(data)
+
+				if opcode == OP_DATA:
+					# verify checksum
+					if compute_checksum(payload) != checksum:
+						continue # server retransmit
+					file_data += payload
+					ack = build_packet(OP_ACK, seq_num)
+					sock.sendto(ack, server_addr)
+
+				elif opcode == OP_FIN:
+					# save file
+					with open(f"downloads/{filename}", "wb") as f:
+						f.write(file_data)
+					print(f"Downloaded {filename} successfully!")
+					break
+
 
 
 # MAIN LOOP =======================================================
@@ -82,7 +123,7 @@ while True and connected:
 	match action_chosen:
 		case "1":
 			#download
-			print("downlao")
+			download()
 
 		case "2":
 			print("upload")
