@@ -1,5 +1,6 @@
 """ Main client file """
 import socket
+from protocol import *
 
 class Client:
 	def __init__(self):
@@ -26,11 +27,12 @@ class Client:
 		connected = False
 		for i in range(3):
 			try:
-				SYN = (b"\x00")
+				SYN = build_packet(OP_SYN, 0)
 				self.sock.sendto(SYN, self.server_addr)
 
 				data, _ = self.sock.recvfrom(1024)
-				if int.from_bytes(data[:2]) == 1:
+				opcode, _, _, _, _ = parse_packet(data)
+				if opcode == OP_SYNACK:
 					connected = True
 					break
 

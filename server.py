@@ -1,6 +1,7 @@
 """ Main server file """
 
 import socket
+from protocol import *
 
 class Server:
 	def __init__(self):
@@ -23,12 +24,12 @@ class Server:
 
 		while True: # Constant loop, listening for messages
 			data, addr = self.sock.recvfrom(1024)
+			opcode, seq_num, payload_length, checksum, payload = parse_packet(data)
 			print("Received packet from ", addr)
 
-			if int.from_bytes(data[:2]) == 0:
+			if opcode == OP_SYN:
 				print("\nReceived SYN from ", addr)
-
-				SYNACK = (b'\x01')
+				SYNACK = build_packet(OP_SYNACK, 0)
 				self.sock.sendto(SYNACK, addr)
 
 if __name__ == "__main__":
