@@ -41,7 +41,7 @@ class Server:
 					print(self.sessions)
 					print(addr, " added to sessions!")
 
-					SYNACK = (b'\x01')
+					SYNACK = (b'\x06')
 					self.sock.sendto(SYNACK, addr)
 
 

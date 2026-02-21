@@ -20,7 +20,7 @@ sock.settimeout(3)
 connected = False
 for i in range(3):
 	try:
-		SYN = (b"\x00")
+		SYN = (b"\x05")
 		sock.sendto(SYN, server_addr)
 
 		data, _ = sock.recvfrom(1024)
