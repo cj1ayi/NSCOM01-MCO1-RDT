@@ -26,7 +26,7 @@ for i in range(3):
 		sock.sendto(SYN, server_addr)
 
 		data, _ = sock.recvfrom(1024)
-		opcode, ermsg, _, _, _ = parse_packet(data)
+		opcode, ermsg, _, _, _, _ = parse_packet(data)
 
 		if opcode == OP_SYNACK:  
 			connected = True
@@ -61,7 +61,7 @@ def close_socket():
 			sock.sendto(FIN, server_addr)
 
 			data, _ = sock.recvfrom(1024)
-			opcode, ermsg, _, _, _ = parse_packet(data)
+			opcode, ermsg, _, _, _, _ = parse_packet(data)
 
 			if opcode == OP_FINACK:
 				fin_sent = True
@@ -87,7 +87,7 @@ def download():
 	sock.sendto(rrq, server_addr)
 
 	data, _ = sock.recvfrom(1024)
-	opcode, ermsg, _, _, payload = parse_packet(data)
+	opcode, ermsg, _, _, payload, _ = parse_packet(data)
 
 	if opcode == OP_ERROR:
 		print_error(ermsg)
@@ -106,12 +106,12 @@ def download():
 
 		while True:
 			data, _ = sock.recvfrom(1024)
-			opcode, seq_num, _, checksum, payload = parse_packet(data)
+			opcode, seq_num, _, checksum, payload, encrypted = parse_packet(data)
 
 			if opcode == OP_DATA:
 
 				# verify checksum
-				if compute_checksum(payload) != checksum:
+				if compute_checksum(encrypted) != checksum:
 					error = build_packet(OP_ERROR, ER_CHECKSUM)
 					sock.sendto(error, server_addr)
 					continue # server retransmit
@@ -163,7 +163,7 @@ def upload():
 		sock.sendto(wrq, server_addr)
 
 		data, _ = sock.recvfrom(1024)
-		opcode, ermsg, _, _, payload = parse_packet(data)
+		opcode, ermsg, _, _, payload, _ = parse_packet(data)
 
 		if opcode == OP_ERROR:
 			print_error(ermsg)
@@ -190,7 +190,7 @@ def upload():
 						try:
 							sock.sendto(packet, server_addr)
 							data, _ = sock.recvfrom(1024)
-							opcode, seq_num, _, _, _ = parse_packet(data)
+							opcode, seq_num, _, _, _, _ = parse_packet(data)
 
 							if opcode == OP_ACK and seq_num == seq:
 								seq += 1
@@ -211,7 +211,7 @@ def upload():
 				try:
 					sock.sendto(fin, server_addr)
 					data, _ = sock.recvfrom(1024)
-					opcode, ermsg, _, _, _ = parse_packet(data)
+					opcode, ermsg, _, _, _, _ = parse_packet(data)
 
 					if opcode == OP_FINACK:
 						print(f"{filename} was uploaded successfully!")

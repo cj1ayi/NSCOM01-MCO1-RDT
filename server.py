@@ -20,7 +20,7 @@ print("Server is active and listening on port 8888!")
 
 while True:  # Constant loop, listening for messages
 	data, addr = sock.recvfrom(1024)
-	opcode, seq_num, payload_length, checksum, payload = parse_packet(data)
+	opcode, seq_num, payload_length, checksum, payload, _ = parse_packet(data)
 	print("Received packet from ", addr)
 
 	# SYN/SYNACK =======================================================
@@ -72,7 +72,7 @@ while True:  # Constant loop, listening for messages
 
 			# wait for ack seq=0
 			data, _ = sock.recvfrom(1024)
-			opcode, seq_num, _, _, _ = parse_packet(data)
+			opcode, seq_num, _, _, _, _ = parse_packet(data)
 
 			if opcode == OP_ACK and seq_num == 0:
 				with open(filepath, "rb") as f:
@@ -90,7 +90,7 @@ while True:  # Constant loop, listening for messages
 							try:
 								sock.sendto(packet, addr)
 								data, _ = sock.recvfrom(1024)
-								opcode, seq_num, _, _, _ = parse_packet(data)
+								opcode, seq_num, _, _, _, _ = parse_packet(data)
 
 								if opcode == OP_ACK and seq_num == seq:
 									seq += 1
@@ -112,7 +112,7 @@ while True:  # Constant loop, listening for messages
 					try:
 						sock.sendto(fin, addr)
 						data, addr = sock.recvfrom(1024)
-						opcode, ermsg, _, _, _ = parse_packet(data)
+						opcode, ermsg, _, _, _, _ = parse_packet(data)
 
 						if opcode == OP_FINACK:
 							print(f"Client successfully downloads {filename}")
@@ -154,19 +154,19 @@ while True:  # Constant loop, listening for messages
 
 				# wait for ACK seq=0
 				data, _ = sock.recvfrom(1024)
-				opcode, seq_num, _, _, _ = parse_packet(data)
+				opcode, seq_num, _, _, _, _ = parse_packet(data)
 
 				if opcode == OP_ACK and seq_num == 0:
 					file_data = b""
 
 					while True:
 						data, addr = sock.recvfrom(1024)
-						opcode, seq_num, _, checksum, payload = parse_packet(data)
+						opcode, seq_num, _, checksum, payload, encrypted = parse_packet(data)
 
 						if opcode == OP_DATA:
 
 							# verify checksum
-							if compute_checksum(payload) != checksum:
+							if compute_checksum(encrypted) != checksum:
 								error = build_packet(OP_ERROR, ER_CHECKSUM)
 								sock.sendto(error, addr)
 								continue # server retransmit

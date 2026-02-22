@@ -1,4 +1,5 @@
 import struct
+from cryptography.fernet import Fernet
 
 ## opcodes
 OP_RRQ    = 0
@@ -19,18 +20,37 @@ ER_FAE = 2
 ER_UNEXPECTED = 3
 ER_CHECKSUM = 4
 
+KEY = b'xcc0ANVsck0eHjD06oqVJb6RInqz-BO6TlU5ZCelx50='
+cipher = Fernet(KEY)
+
 def compute_checksum(payload):
     return sum(payload) & 0xFFFF
 
 def build_packet(opcode, seq_num, payload=b""):
-    checksum = compute_checksum(payload)
-    header = struct.pack("!BIHH", opcode, seq_num, len(payload), checksum)
-    return header + payload
+    encrypted = cipher.encrypt(payload) if payload else b""
+    if payload:
+        '''
+        print(f"[build_packet] Original payload: {payload}") #DEBUG
+        print(f"[build_packet] Encrypted payload: {encrypted}") #DEBUG
+        '''
+    checksum = compute_checksum(encrypted)
+    header = struct.pack("!BIHH", opcode, seq_num, len(encrypted), checksum)
+    return header + encrypted
 
 def parse_packet(data):
-    opcode, seq_num, payload_length, checksum = struct.unpack("!BIHH",data[:9])
-    payload = data[9:]
-    return opcode, seq_num, payload_length, checksum, payload
+    opcode, seq_num, payload_length, checksum = struct.unpack("!BIHH", data[:9])
+    encrypted = data[9:]
+    
+    if encrypted:
+        '''
+        print(f"[parse_packet] Encrypted payload received: {encrypted}") #DEBUG
+        '''
+    payload = cipher.decrypt(encrypted) if encrypted else b""
+    if encrypted:
+        '''
+        print(f"[parse_packet] Decrypted payload: {payload}") #DEBUG
+        '''
+    return opcode, seq_num, payload_length, checksum, payload, encrypted
 
 def print_error(ermsg):
     print("Error received.")
@@ -49,3 +69,4 @@ def print_error(ermsg):
 
         case x if x == ER_CHECKSUM:
             print("Error type: Checksum mismatch")
+
