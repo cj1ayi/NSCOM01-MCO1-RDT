@@ -101,9 +101,18 @@ def download():
 		# send ACK seq=0 (so we dont have to use ACK#0 lol)
 		ack = build_packet(OP_ACK, 0)
 		sock.sendto(ack, server_addr)
-		# loop receiving data packets
 		file_data = b"" # store all chunks here
 
+		# Checking filesize VS free space
+		free_space = get_disk_space("downloads")
+		filesize = int(payload.decode())
+		if free_space < filesize:
+			print("Not enough space to download this file.")
+			error = build_packet(OP_ERROR, ER_SPACE)
+			sock.sendto(error, server_addr)
+			return
+
+		# loop receiving data packets
 		while True:
 			data, _ = sock.recvfrom(1024)
 			opcode, seq_num, _, checksum, payload, encrypted = parse_packet(data)
@@ -169,6 +178,7 @@ def upload():
 			print_error(ermsg)
 			print("Press ENTER to continue.")
 			input()
+			return
 
 		elif opcode == OP_SACK:
 			# send ACK seq=0 to confirm transfer start

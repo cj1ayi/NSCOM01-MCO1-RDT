@@ -74,6 +74,10 @@ while True:  # Constant loop, listening for messages
 			data, _ = sock.recvfrom(1024)
 			opcode, seq_num, _, _, _, _ = parse_packet(data)
 
+			if opcode == OP_ERROR:
+				print_error(seq_num)
+				continue
+
 			if opcode == OP_ACK and seq_num == 0:
 				with open(filepath, "rb") as f:
 					seq = 1
@@ -141,12 +145,19 @@ while True:  # Constant loop, listening for messages
 			sock.sendto(error, addr)
 		else:
 			filename, filesize = payload.decode().split()
+			filesize = int(filesize)
+			free_space = get_disk_space("server_files"):
 
 			filepath = os.path.join("server_files", filename)
 			if os.path.exists(filepath):
 				error = build_packet(OP_ERROR, ER_FAE)
 				sock.sendto(error, addr)
-				pass
+				continue
+
+			elif free_space < filesize:
+				error = build_packet(OP_ERROR, ER_SPACE)
+				sock.sendto(error, addr)
+				continue
 
 			else:
 				sack = build_packet(OP_SACK, 0) # Acts as ACK0, no need for ACK0 anymore
