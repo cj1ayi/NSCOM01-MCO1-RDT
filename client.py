@@ -82,7 +82,7 @@ def close_socket():
 
 # DOWNLOAD (RRQ) ================================================
 def download():
-	filename = input("Enter filename: ").strip()
+	filename = input("Enter filename of file to download: ").strip()
 	rrq = build_packet(OP_RRQ, 0, filename.encode())
 	sock.sendto(rrq, server_addr)
 
@@ -123,11 +123,17 @@ def download():
 				print(f"Downloaded {filename} successfully!")
 
 				finack = build_packet(OP_FINACK, 0)
-				sock.sendto(finack_packet, addr)
+				sock.sendto(finack, server_addr)
 				break
 
 			elif opcode == OP_ERROR:
 				print_error(seq_num)
+
+
+
+# UPLOAD (WRQ) ==============================================
+def upload():
+	filename = input("Enter filename of file to upload: ")
 
 
 

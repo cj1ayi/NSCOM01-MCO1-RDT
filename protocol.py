@@ -17,6 +17,7 @@ ER_TIMEOUT = 0
 ER_FNF = 1
 ER_FAE = 2
 ER_UNEXPECTED = 3
+ER_CHECKSUM = 4
 
 def compute_checksum(payload):
     return sum(payload) & 0xFFFF
@@ -34,14 +35,17 @@ def parse_packet(data):
 def print_error(ermsg):
     print("Error received.")
     match ermsg:
-        case ER_TIMEOUT:
+        case x if x == ER_TIMEOUT:
             print("Error type: Timeout")
 
-        case ER_FNF:
+        case x if x == ER_FNF:
             print("Error type: File not found")
 
-        case ER_FAE:
+        case x if x == ER_FAE:
             print("Error type: File already exists")
 
-        case ER_UNEXPECTED:
-            print("Error type: Unexpected packet.")
+        case x if x == ER_UNEXPECTED:
+            print("Error type: Unexpected packet")
+
+        case x if x == ER_CHECKSUM:
+            print("Error type: Checksum mismatch")

@@ -107,16 +107,23 @@ while True:  # Constant loop, listening for messages
 
 				# send FIN
 				fin = build_packet(OP_FIN, 0)
-				for attempt in range(3):
-					sock.sendto(fin, addr)
-					data, _ = sock.recvfrom(1024)
-					opcode, ermsg, _, _, _ = parse_packet(data)
 
-					if opcode == OP_FINACK:
-						break
+				for attempt in range(5):
+					try:
+						sock.sendto(fin, addr)
+						data, _ = sock.recvfrom(1024)
+						opcode, ermsg, _, _, _ = parse_packet(data)
 
-					elif opcode	== OP_ERROR:
-						print_error(ermsg)
+						if opcode == OP_FINACK:
+							break
+
+						elif opcode	== OP_ERROR:
+							print_error(ermsg)
+					except socket.timeout:
+						print(f"Timeout, resening FIN")
+				else:
+					error = build_packet(OP_ERROR, ER_TIMEOUT)
+					sock.sendto(error, addr)
 				sessions.pop(addr)
 
 				sock.settimeout(None)
