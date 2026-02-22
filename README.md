@@ -88,9 +88,10 @@ Select action:
 
 ## Packet Header Format
 
-```
-+----------+-----------+----------------+----------+-------------------+
-| Op Code  | Seq #     | Payload Length | Checksum | Encrypted Payload |
-| (1 byte) | (4 bytes) | (2 bytes)      | (2 bytes)| (variable)       |
-+----------+-----------+----------------+----------+-------------------+
-```
+| Field | Size | Description |
+|-------|------|-------------|
+| Op Code | 1 byte | Message type identifier |
+| Sequence # | 4 bytes | Ordering and acknowledgement |
+| Payload Length | 2 bytes | Length of encrypted payload |
+| Checksum | 2 bytes | 16-bit integrity check |
+| Payload | Variable | Fernet-encrypted data |
