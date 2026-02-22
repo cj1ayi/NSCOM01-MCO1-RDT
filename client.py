@@ -112,37 +112,55 @@ def download():
 			sock.sendto(error, server_addr)
 			return
 
+		sock.settimeout(5)
+		attempts = 0 # when 5 attempts have happened and no reply, timeout error is called
+
 		# loop receiving data packets
 		while True:
-			data, _ = sock.recvfrom(1024)
-			opcode, seq_num, _, checksum, payload, encrypted = parse_packet(data)
+			try:
+				data, _ = sock.recvfrom(1024)
+				opcode, seq_num, _, checksum, payload, encrypted = parse_packet(data)
+				attempts = 0 # reset since packet was received
 
-			if opcode == OP_DATA:
+				if opcode == OP_DATA:
 
-				# verify checksum
-				if compute_checksum(encrypted) != checksum:
-					error = build_packet(OP_ERROR, ER_CHECKSUM)
+					# verify checksum
+					if compute_checksum(encrypted) != checksum:
+						error = build_packet(OP_ERROR, ER_CHECKSUM)
+						sock.sendto(error, server_addr)
+						continue # server retransmit
+
+					file_data += payload
+					ack = build_packet(OP_ACK, seq_num)
+					sock.sendto(ack, server_addr)
+
+				elif opcode == OP_FIN:
+					# save file
+					with open(f"downloads/{filename}", "wb") as f:
+						f.write(file_data)
+					print(f"Downloaded {filename} successfully!")
+					print("Press ENTER to continue.")
+					input()
+
+					finack = build_packet(OP_FINACK, 0)
+					sock.sendto(finack, server_addr)
+					sock.settimeout(None)
+					return
+
+				elif opcode == OP_ERROR:
+					print_error(seq_num)
+
+			except socket.timeout:
+				attempts += 1
+				
+				if attempts >= 5: # 5 attempts and timeout is called
+					error = build_packet(OP_ERROR, ER_TIMEOUT)
 					sock.sendto(error, server_addr)
-					continue # server retransmit
-
-				file_data += payload
-				ack = build_packet(OP_ACK, seq_num)
-				sock.sendto(ack, server_addr)
-
-			elif opcode == OP_FIN:
-				# save file
-				with open(f"downloads/{filename}", "wb") as f:
-					f.write(file_data)
-				print(f"Downloaded {filename} successfully!")
-				print("Press ENTER to continue.")
-				input()
-
-				finack = build_packet(OP_FINACK, 0)
-				sock.sendto(finack, server_addr)
-				return
-
-			elif opcode == OP_ERROR:
-				print_error(seq_num)
+					print("Session timed out. Server unresponsive.")
+					print("Press ENTER to continue.")
+					input()
+					sock.settimeout(None)
+					return
 
 
 
