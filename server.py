@@ -144,9 +144,10 @@ while True:  # Constant loop, listening for messages
 			error = build_packet(OP_ERROR, ER_UNEXPECTED)
 			sock.sendto(error, addr)
 		else:
-			filename, filesize = payload.decode().split()
-			filesize = int(filesize)
-			free_space = get_disk_space("server_files"):
+			filename, filesize = payload.split(b'\x00')
+			filename = filename.decode()
+			filesize = int(filesize.decode())
+			free_space = get_disk_space("server_files")
 
 			filepath = os.path.join("server_files", filename)
 			if os.path.exists(filepath):

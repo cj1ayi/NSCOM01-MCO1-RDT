@@ -167,8 +167,8 @@ def upload():
 
 	else:
 		filesize = os.path.getsize(filepath)
-		payload = filename + " " + str(filesize)
-		wrq = build_packet(OP_WRQ, 0, payload.encode())
+		payload = filename.encode() + b'\x00' + str(filesize).encode()
+		wrq = build_packet(OP_WRQ, 0, payload)
 		sock.sendto(wrq, server_addr)
 
 		data, _ = sock.recvfrom(1024)
