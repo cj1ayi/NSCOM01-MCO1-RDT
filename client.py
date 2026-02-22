@@ -91,6 +91,10 @@ def download():
 
 	if opcode == OP_ERROR:
 		print_error(ermsg)
+		if ermsg == ER_FNF:
+			print("This file does not exist in the server.")
+			print("Press ENTER to continue.")
+			input()
 		return
 
 	elif opcode == OP_SACK:
@@ -121,10 +125,12 @@ def download():
 				with open(f"downloads/{filename}", "wb") as f:
 					f.write(file_data)
 				print(f"Downloaded {filename} successfully!")
+				print("Press ENTER to continue.")
+				input()
 
 				finack = build_packet(OP_FINACK, 0)
 				sock.sendto(finack, server_addr)
-				break
+				return
 
 			elif opcode == OP_ERROR:
 				print_error(seq_num)
@@ -133,7 +139,111 @@ def download():
 
 # UPLOAD (WRQ) ==============================================
 def upload():
+
 	filename = input("Enter filename of file to upload: ")
+
+	filepath = os.path.join("uploads", filename)
+	if not os.path.exists(filepath):
+		print("This file is not inside the 'uploads' folder.")
+		print("Please move all files to be uploaded in the 'uploads' folder.")
+		print("Press ENTER to continue.")
+		input()
+		return
+
+	elif ' ' in filename:
+		print("There are spaces in your filename, please remove them.")
+		print("Press ENTER to continue.")
+		input()
+		return()
+
+	else:
+		filesize = os.path.getsize(filepath)
+		payload = filename + " " + str(filesize)
+		wrq = build_packet(OP_WRQ, 0, payload.encode())
+		sock.sendto(wrq, server_addr)
+
+		data, _ = sock.recvfrom(1024)
+		opcode, ermsg, _, _, payload = parse_packet(data)
+
+		if opcode == OP_ERROR:
+			print_error(ermsg)
+			print("Press ENTER to continue.")
+			input()
+
+		elif opcode == OP_SACK:
+			with open(filepath, "rb") as f:
+				seq = 1
+				while True:
+					chunk = f.read(512)
+					
+					if not chunk: # Entirety of file has been read
+						break
+
+					packet = build_packet(OP_DATA, seq, chunk)
+					sock.settimeout(5)
+
+					for attempt in range(5):
+						try:
+							sock.sendto(packet, server_addr)
+							data, _ = sock.recvfrom(1024)
+							opcode, seq_num, _, _, _ = parse_packet(data)
+
+							if opcode == OP_ACK and seq_num == seq:
+								seq += 1
+								break
+
+							elif opcode == OP_ERROR:
+								print_error(seq_num)
+						except socket.timeout:
+							print(f"Timeout, resending DATA#{seq}...")
+					else:
+						error = build_packet(OP_ERROR, ER_TIMEOUT)
+						sock.sendto(error, server_addr)
+
+			# Send FIN
+			fin = build_packet(OP_FIN, 0)
+
+			for attempt in range(5):
+				try:
+					sock.sendto(fin, server_addr)
+					data, _ = sock.recvfrom(1024)
+					opcode, ermsg, _, _, _ = parse_packet(data)
+
+					if opcode == OP_FINACK:
+						print(f"{filename} was uploaded successfully!")
+						print("Press ENTER to continue.")
+						input()
+						return
+
+					elif opcode == OP_ERROR:
+						print_error(ermsg)
+				except socket.timeout:
+					print(f"Timeout, resending FIN")
+			else:
+				error = build_packet(OP_ERROR, ER_TIMEOUT)
+				sock.sendto(error, server_addr)
+
+
+
+
+
+
+	"""
+	wrq = build_packet(OP_WRQ, 0, filename.encode())
+	sock.sendto(wrq, server_addr)
+
+	data, _ = sock.recvfrom(1024)
+	opcode, ermsg, _, _, payload = parse_packet(data)
+
+	if opcode == OP_ERROR:
+		print_error(ermsg)
+		return
+
+	elif opcode == OP_SACK:
+		# wait for ack#0
+
+		while True:
+			"""
 
 
 
@@ -156,6 +266,7 @@ while True and connected:
 		case "2":
 			print("upload")
 			#upload
+			upload()
 
 		case "3":
 			print("Exiting program...")
