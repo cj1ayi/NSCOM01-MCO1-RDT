@@ -125,7 +125,7 @@ while True:  # Constant loop, listening for messages
 				else:
 					error = build_packet(OP_ERROR, ER_TIMEOUT)
 					sock.sendto(error, addr)
-				sessions.pop(addr)
+				
 
 				sock.settimeout(None)
 
@@ -136,46 +136,54 @@ while True:  # Constant loop, listening for messages
 
 	# WRQ ==============================================================
 	elif opcode == OP_WRQ:
-		filename, filesize = payload.decode().split()
-
-		filepath = os.path.join("server_files", filename)
-		if os.path.exists(filepath):
-			error = build_packet(OP_ERROR, ER_FAE)
+		if addr not in sessions:
+			error = build_packet(OP_ERROR, ER_UNEXPECTED)
 			sock.sendto(error, addr)
-			pass
-
 		else:
-			sack = build_packet(OP_SACK, 0) # Acts as ACK0, no need for ACK0 anymore
-			sock.sendto(sack, addr)
+			filename, filesize = payload.decode().split()
 
-			# all received data packets are stored here
-			file_data = b""
+			filepath = os.path.join("server_files", filename)
+			if os.path.exists(filepath):
+				error = build_packet(OP_ERROR, ER_FAE)
+				sock.sendto(error, addr)
+				pass
 
-			while True:
-				data, addr = sock.recvfrom(1024)
-				opcode, seq_num, _, checksum, payload = parse_packet(data)
+			else:
+				sack = build_packet(OP_SACK, 0) # Acts as ACK0, no need for ACK0 anymore
+				sock.sendto(sack, addr)
 
-				if opcode == OP_DATA:
+				# wait for ACK seq=0
+				data, _ = sock.recvfrom(1024)
+				opcode, seq_num, _, _, _ = parse_packet(data)
 
-					# verify checksum
-					if compute_checksum(payload) != checksum:
-						error = build_packet(OP_ERROR, ER_CHECKSUM)
-						sock.sendto(error, addr)
-						continue # server retransmit
+				if opcode == OP_ACK and seq_num == 0:
+					file_data = b""
 
-					file_data += payload
-					ack = build_packet(OP_ACK, seq_num)
-					sock.sendto(ack, addr)
+					while True:
+						data, addr = sock.recvfrom(1024)
+						opcode, seq_num, _, checksum, payload = parse_packet(data)
 
-				if opcode == OP_FIN:
-					# save file
-					with open(f"server_files/{filename}", "wb") as f:
-						f.write(file_data)
-					print(f"{filename} was uploaded to the server.")
+						if opcode == OP_DATA:
 
-					finack = build_packet(OP_FINACK, 0)
-					sock.sendto(finack, addr)
-					break
+							# verify checksum
+							if compute_checksum(payload) != checksum:
+								error = build_packet(OP_ERROR, ER_CHECKSUM)
+								sock.sendto(error, addr)
+								continue # server retransmit
 
-				elif opcode == OP_ERROR:
-					print_error(seq_num)
+							file_data += payload
+							ack = build_packet(OP_ACK, seq_num)
+							sock.sendto(ack, addr)
+
+						elif opcode == OP_FIN:
+							# save file
+							with open(f"server_files/{filename}", "wb") as f:
+								f.write(file_data)
+							print(f"{filename} was uploaded to the server.")
+
+							finack = build_packet(OP_FINACK, 0)
+							sock.sendto(finack, addr)
+							break
+
+						elif opcode == OP_ERROR:
+							print_error(seq_num)

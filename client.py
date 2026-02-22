@@ -171,6 +171,10 @@ def upload():
 			input()
 
 		elif opcode == OP_SACK:
+			# send ACK seq=0 to confirm transfer start
+			ack = build_packet(OP_ACK, 0)
+			sock.sendto(ack, server_addr)
+
 			with open(filepath, "rb") as f:
 				seq = 1
 				while True:
@@ -213,6 +217,7 @@ def upload():
 						print(f"{filename} was uploaded successfully!")
 						print("Press ENTER to continue.")
 						input()
+						sock.settimeout(None)
 						return
 
 					elif opcode == OP_ERROR:
