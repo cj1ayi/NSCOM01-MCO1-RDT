@@ -10,106 +10,108 @@ sock.bind(('127.0.0.1', 8888))
 
 
 
-# MAIN LOOP ==============================================================
-print("Server is active and listening on port 8888!")
+# SYN/SYNACK ============================================================
+def synsynack(addr):
+	print("\nReceived SYN from ", addr)
 
-while True:  # Constant loop, listening for messages
-	data, addr = sock.recvfrom(1024)
-	opcode, seq_num, payload_length, checksum, payload, _ = parse_packet(data)
-	print("Received packet from ", addr)
+	synack_packet = build_packet(OP_SYNACK, 0)
+	sock.sendto(synack_packet, addr)
+	return
 
-	# SYN/SYNACK =======================================================
-	if opcode == OP_SYN:
-		print("\nReceived SYN from ", addr)
 
-		synack_packet = build_packet(OP_SYNACK, 0)
-		sock.sendto(synack_packet, addr)
 
-	# RRQ ==============================================================
-	elif opcode == OP_RRQ: 
-		filename = payload.decode()
-		print(f"Client requests file: {filename}")
+# RRQ ==================================================================
+def rrq(addr, payload):
+	filename = payload.decode()
+	print(f"Client requests file: {filename}")
 
-		filepath = os.path.join("server_files", filename)
-		if not os.path.exists(filepath):
-			error = build_packet(OP_ERROR, ER_FNF)
-			sock.sendto(error, addr)
+	filepath = os.path.join("server_files", filename)
+	if not os.path.exists(filepath):
+		error = build_packet(OP_ERROR, ER_FNF)
+		sock.sendto(error, addr)
+		return
 
-		else:
-			filesize = os.path.getsize(filepath)
-			sack = build_packet(OP_SACK, 0, str(filesize).encode())
-			sock.sendto(sack, addr)
+	else:
+		filesize = os.path.getsize(filepath)
+		sack = build_packet(OP_SACK, 0, str(filesize).encode())
+		sock.sendto(sack, addr)
 
-			# wait for ack seq=0
-			data, _ = sock.recvfrom(1024)
-			opcode, seq_num, _, _, _, _ = parse_packet(data)
+		# wait for ack seq=0
+		data, _ = sock.recvfrom(1024)
+		opcode, seq_num, _, _, _, _ = parse_packet(data)
 
-			if opcode == OP_ERROR:
-				print_error(seq_num)
-				continue
+		if opcode == OP_ERROR:
+			print_error(seq_num)
+			return
 
-			if opcode == OP_ACK and seq_num == 0:
-				with open(filepath, "rb") as f:
-					seq = 1
+		if opcode == OP_ACK and seq_num == 0:
+			with open(filepath, "rb") as f:
+				seq = 1
+				attempts = 0
+				while True:
+					chunk = f.read(512)
+					if not chunk: 
+						break
+					
+					# retransmission
+					packet = build_packet(OP_DATA, seq, chunk)
+					sock.settimeout(5)
+					attempts = 0
+
 					while True:
-						chunk = f.read(512)
-						if not chunk: 
-							break
-						
-						# retransmission
-						packet = build_packet(OP_DATA, seq, chunk)
-						sock.settimeout(5)
+						try:
+							sock.sendto(packet, addr)
+							data, _ = sock.recvfrom(1024)
+							opcode, seq_num, _, _, _, _ = parse_packet(data)
 
-						for attempt in range(5):
-							try:
-								sock.sendto(packet, addr)
-								data, _ = sock.recvfrom(1024)
-								opcode, seq_num, _, _, _, _ = parse_packet(data)
+							if opcode == OP_ACK and seq_num == seq:
+								seq += 1
+								break
 
-								if opcode == OP_ACK and seq_num == seq:
-									seq += 1
-									break
+							elif opcode == OP_ERROR:
+								print_error(seq_num)
 
-								elif opcode == OP_ERROR:
-									print_error(seq_num)
+						except socket.timeout:
+							print(f"Timeout, resending DATA#{seq}...")
+							attempts += 1
+			
+							if attempts >= 5: # 5 attempts and timeout is called
+								error = build_packet(OP_ERROR, ER_TIMEOUT)
+								sock.sendto(error, addr)
+								print("Session timed out. Client unresponsive.")
+								sock.settimeout(None)
+								return
 
-							except socket.timeout:
-								print(f"Timeout, resending DATA#{seq}...")
-						else:
-							error = build_packet(OP_ERROR, ER_TIMEOUT)
-							sock.sendto(error, addr)
+			# send FIN
+			fin = build_packet(OP_FIN, 0)
 
-				# send FIN
-				fin = build_packet(OP_FIN, 0)
+			for attempt in range(5):
+				try:
+					sock.sendto(fin, addr)
+					data, addr = sock.recvfrom(1024)
+					opcode, ermsg, _, _, _, _ = parse_packet(data)
 
-				for attempt in range(5):
-					try:
-						sock.sendto(fin, addr)
-						data, addr = sock.recvfrom(1024)
-						opcode, ermsg, _, _, _, _ = parse_packet(data)
+					if opcode == OP_FINACK:
+						print(f"Client successfully downloads {filename}")
+						return
 
-						if opcode == OP_FINACK:
-							print(f"Client successfully downloads {filename}")
-							break
+					elif opcode	== OP_ERROR:
+						print_error(ermsg)
+						return
+				except socket.timeout:
+					print(f"Timeout, resending FIN")
+			else:
+				error = build_packet(OP_ERROR, ER_TIMEOUT)
+				sock.sendto(error, addr)
+			
 
-						elif opcode	== OP_ERROR:
-							print_error(ermsg)
-					except socket.timeout:
-						print(f"Timeout, resending FIN")
-				else:
-					error = build_packet(OP_ERROR, ER_TIMEOUT)
-					sock.sendto(error, addr)
-				
+			sock.settimeout(None)
+			return
 
-				sock.settimeout(None)
 
-			elif opcode == OP_ERROR:
-				print_error(seq_num)
 
-						
-
-	# WRQ ==============================================================
-	elif opcode == OP_WRQ:
+# WRQ ====================================================================
+def wrq(addr, payload):
 		filename, filesize = payload.split(b'\x00')
 		filename = filename.decode()
 		filesize = int(filesize.decode())
@@ -119,12 +121,12 @@ while True:  # Constant loop, listening for messages
 		if os.path.exists(filepath):
 			error = build_packet(OP_ERROR, ER_FAE)
 			sock.sendto(error, addr)
-			continue
+			return
 
 		elif free_space < filesize:
 			error = build_packet(OP_ERROR, ER_SPACE)
 			sock.sendto(error, addr)
-			continue
+			return
 
 		else:
 			sack = build_packet(OP_SACK, 0) # Acts as ACK0, no need for ACK0 anymore
@@ -152,6 +154,7 @@ while True:  # Constant loop, listening for messages
 							if compute_checksum(encrypted) != checksum:
 								error = build_packet(OP_ERROR, ER_CHECKSUM)
 								sock.sendto(error, addr)
+								print("Checksum mismatch. Disregarding packet...")
 								continue # server retransmit
 
 							file_data += payload
@@ -167,19 +170,38 @@ while True:  # Constant loop, listening for messages
 							finack = build_packet(OP_FINACK, 0)
 							sock.sendto(finack, addr)
 							sock.settimeout(None)
-							continue
+							return
 
 						elif opcode == OP_ERROR:
 							print_error(seq_num)
 
 					except socket.timeout:
 						attempts += 1
-						print("Timed out. Retrying...")
-						print(attempts)
+						print(f"Timed out. Resending ACK#{seq}...")
 						
 						if attempts >= 5: # 5 attempts and timeout is called
 							error = build_packet(OP_ERROR, ER_TIMEOUT)
 							sock.sendto(error, addr)
 							print("Session timed out. Client unresponsive.")
 							sock.settimeout(None)
-							break
+							return
+
+
+
+# MAIN LOOP ==============================================================
+print("Server is active and listening on port 8888!")
+
+while True:  # Constant loop, listening for messages
+	sock.settimeout(None)
+	data, addr = sock.recvfrom(1024)
+	opcode, seq_num, payload_length, checksum, payload, _ = parse_packet(data)
+	print("Received packet from ", addr)
+
+	if opcode == OP_SYN:
+		synsynack(addr)
+
+	elif opcode == OP_RRQ:
+		rrq(addr, payload)
+						
+	elif opcode == OP_WRQ:
+		wrq(addr, payload)

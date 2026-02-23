@@ -29,11 +29,6 @@ def compute_checksum(payload):
 
 def build_packet(opcode, seq_num, payload=b""):
     encrypted = cipher.encrypt(payload) if payload else b""
-    if payload:
-      """
-        print(f"[build_packet] Original payload: {payload}") #DEBUG
-        print(f"[build_packet] Encrypted payload: {encrypted}") #DEBUG
-        """
     checksum = compute_checksum(encrypted)
     header = struct.pack("!BIHH", opcode, seq_num, len(encrypted), checksum)
     return header + encrypted
@@ -41,17 +36,8 @@ def build_packet(opcode, seq_num, payload=b""):
 def parse_packet(data):
     opcode, seq_num, payload_length, checksum = struct.unpack("!BIHH", data[:9])
     encrypted = data[9:]
-    
-    if encrypted:
-        """
-        print(f"[parse_packet] Encrypted payload received: {encrypted}") #DEBUG
-        """
 
     payload = cipher.decrypt(encrypted) if encrypted else b""
-    if encrypted:
-       """
-        print(f"[parse_packet] Decrypted payload: {payload}") #DEBUG
-        """
     return opcode, seq_num, payload_length, checksum, payload, encrypted
 
 def print_error(ermsg):

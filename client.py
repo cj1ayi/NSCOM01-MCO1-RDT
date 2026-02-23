@@ -118,6 +118,7 @@ def download():
 
 			except socket.timeout:
 				attempts += 1
+				print(f"Timeout. Resending ACK#{seq}...")
 				
 				if attempts >= 5: # 5 attempts and timeout is called
 					error = build_packet(OP_ERROR, ER_TIMEOUT)
@@ -179,12 +180,14 @@ def upload():
 
 					packet = build_packet(OP_DATA, seq, chunk)
 					sock.settimeout(5)
+					attempts = 0
 
-					for attempt in range(5):
+					while True:
 						try:
 							sock.sendto(packet, server_addr)
 							data, _ = sock.recvfrom(1024)
 							opcode, seq_num, _, _, _, _ = parse_packet(data)
+							attempts = 0
 
 							if opcode == OP_ACK and seq_num == seq:
 								seq += 1
@@ -194,6 +197,16 @@ def upload():
 								print_error(seq_num)
 						except socket.timeout:
 							print(f"Timeout, resending DATA#{seq}...")
+							attempts += 1
+				
+							if attempts >= 5: # 5 attempts and timeout is called
+								error = build_packet(OP_ERROR, ER_TIMEOUT)
+								sock.sendto(error, server_addr)
+								print("Session timed out. Server unresponsive.")
+								print("Press ENTER to continue.")
+								input()
+								sock.settimeout(None)
+								return
 					else:
 						error = build_packet(OP_ERROR, ER_TIMEOUT)
 						sock.sendto(error, server_addr)
