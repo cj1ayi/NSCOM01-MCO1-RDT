@@ -193,17 +193,24 @@ def upload():
 
 					while True:
 						try:
+							if filename == "checksum.pdf" and attempts == 0 and seq == 1:
+								packet = build_packet(OP_DATA, seq, chunk, True)
+
+							else:
+								packet = build_packet(OP_DATA, seq, chunk)
+
 							sock.sendto(packet, server_addr)
 							data, _ = sock.recvfrom(1024)
 							opcode, seq_num, _, _, _, _ = parse_packet(data)
-							attempts = 0
 
 							if opcode == OP_ACK and seq_num == seq:
 								seq += 1
 								break
 
 							elif opcode == OP_ERROR:
+								attempts += 1
 								print_error(seq_num)
+
 						except socket.timeout:
 							print(f"Timeout, resending DATA#{seq}...")
 							attempts += 1

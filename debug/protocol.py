@@ -27,9 +27,13 @@ cipher = Fernet(KEY)
 def compute_checksum(payload):
     return sum(payload) & 0xFFFF
 
-def build_packet(opcode, seq_num, payload=b""):
+def build_packet(opcode, seq_num, payload=b"", spoof=False):
     encrypted = cipher.encrypt(payload) if payload else b""
     checksum = compute_checksum(encrypted)
+
+    if spoof:  # ------------------------------ for checksum error demo
+        checksum = 67
+
     header = struct.pack("!BIHH", opcode, seq_num, len(encrypted), checksum)
     return header + encrypted
 
