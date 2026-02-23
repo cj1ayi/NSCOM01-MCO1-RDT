@@ -46,40 +46,6 @@ else:
 
 
 
-
-
-# TERMINATION ====================================================
-# Closes socket and sends FIN
-def close_socket():
-
-	# Sending FIN. Three attempts before giving up
-	fin_sent = False
-	sock.settimeout(5)
-	for i in range(3):
-		try:
-			FIN = build_packet(OP_FIN, 0)
-			sock.sendto(FIN, server_addr)
-
-			data, _ = sock.recvfrom(1024)
-			opcode, ermsg, _, _, _, _ = parse_packet(data)
-
-			if opcode == OP_FINACK:
-				fin_sent = True
-				break
-
-			elif opcode == OP_ERROR:
-				print_error(ermsg)
-
-		except socket.timeout:
-			print("Failed to reach server. Retrying...")
-
-	if not fin_sent:
-		print("Error in reaching server. Server may be closed.")
-
-	sock.close()
-
-
-
 # DOWNLOAD (RRQ) ================================================
 def download():
 	filename = input("Enter filename of file to download: ").strip()
@@ -259,29 +225,8 @@ def upload():
 
 
 
-
-
-	"""
-	wrq = build_packet(OP_WRQ, 0, filename.encode())
-	sock.sendto(wrq, server_addr)
-
-	data, _ = sock.recvfrom(1024)
-	opcode, ermsg, _, _, payload = parse_packet(data)
-
-	if opcode == OP_ERROR:
-		print_error(ermsg)
-		return
-
-	elif opcode == OP_SACK:
-		# wait for ack#0
-
-		while True:
-			"""
-
-
-
 # MAIN LOOP =======================================================
-while True and connected:
+while True:
 	print("\n\n================================================")
 	print("\nSelect action:")
 	print("[1] Download File")
@@ -303,8 +248,8 @@ while True and connected:
 
 		case "3":
 			print("Exiting program...")
-			close_socket()
-			connected = False
+			sock.close()
+			break
 
 		case _:
 			#incorrect input
