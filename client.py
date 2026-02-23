@@ -255,7 +255,6 @@ while True:
 			download()
 
 		case "2":
-			print("upload")
 			#upload
 			upload()
 
