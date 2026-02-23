@@ -2,8 +2,8 @@
 A simple custom application-layer protocol built on top of UDP that provides reliable, ordered file transfer between a client and server. 
 
 ## Authors
-- Jacoba Luna
-- Roberta Tan
+- Coby Luna
+- Nate Tan
 
 ## Features
 
