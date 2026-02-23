@@ -154,6 +154,10 @@ def upload():
 
 	else:
 		filesize = os.path.getsize(filepath)
+
+		if filename == "fakegeronimo.txt": # ---------------------------------- for fake geronimo not enough space error demo
+			filesize = 1099511627776
+		
 		payload = filename.encode() + b'\x00' + str(filesize).encode()
 		wrq = build_packet(OP_WRQ, 0, payload)
 		sock.sendto(wrq, server_addr)
