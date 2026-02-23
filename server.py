@@ -8,12 +8,7 @@ from protocol import *
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind(('127.0.0.1', 8888))
 
-""" P.S., server currently listening on port 8888
-	TFTP uses port 69 but maybe since this is supposed to be our own protocol
-	it can be different? But anyway just consider it a placeholder for now """
 
-# Session info is stored here
-sessions = {}
 
 # MAIN LOOP ==============================================================
 print("Server is active and listening on port 8888!")
@@ -27,33 +22,8 @@ while True:  # Constant loop, listening for messages
 	if opcode == OP_SYN:
 		print("\nReceived SYN from ", addr)
 
-		if addr in sessions:
-			print("Error: Unexpected packet")
-
-			error_packet = build_packet(OP_ERROR, ER_UNEXPECTED)
-			sock.sendto(error_packet, addr)
-		else:
-			sessions[addr] = True
-			synack_packet = build_packet(OP_SYNACK, 0)
-			sock.sendto(synack_packet, addr)
-
-	# CLIENT TERMINATION (FIN/FINACK) ===================================
-	elif opcode == OP_FIN:
-		print("\nReceived FIN from ", addr)
-
-		# Removing client from sessions dictionary
-		if addr not in sessions:
-			print("Error: Unexpected packet")
-
-			error_packet = build_packet(OP_ERROR, ER_UNEXPECTED)
-			sock.sendto(error_packet, addr)
-		else:
-			sessions.pop(addr)
-			print(sessions)
-			print(addr, " removed from sessions.")
-
-			finack_packet = build_packet(OP_FINACK, 0)
-			sock.sendto(finack_packet, addr)
+		synack_packet = build_packet(OP_SYNACK, 0)
+		sock.sendto(synack_packet, addr)
 
 	# RRQ ==============================================================
 	elif opcode == OP_RRQ: 
@@ -73,6 +43,10 @@ while True:  # Constant loop, listening for messages
 			# wait for ack seq=0
 			data, _ = sock.recvfrom(1024)
 			opcode, seq_num, _, _, _, _ = parse_packet(data)
+
+			if opcode == OP_ERROR:
+				print_error(seq_num)
+				continue
 
 			if opcode == OP_ACK and seq_num == 0:
 				with open(filepath, "rb") as f:
@@ -136,32 +110,41 @@ while True:  # Constant loop, listening for messages
 
 	# WRQ ==============================================================
 	elif opcode == OP_WRQ:
-		if addr not in sessions:
-			error = build_packet(OP_ERROR, ER_UNEXPECTED)
+		filename, filesize = payload.split(b'\x00')
+		filename = filename.decode()
+		filesize = int(filesize.decode())
+		free_space = get_disk_space("server_files")
+
+		filepath = os.path.join("server_files", filename)
+		if os.path.exists(filepath):
+			error = build_packet(OP_ERROR, ER_FAE)
 			sock.sendto(error, addr)
+			continue
+
+		elif free_space < filesize:
+			error = build_packet(OP_ERROR, ER_SPACE)
+			sock.sendto(error, addr)
+			continue
+
 		else:
-			filename, filesize = payload.decode().split()
+			sack = build_packet(OP_SACK, 0) # Acts as ACK0, no need for ACK0 anymore
+			sock.sendto(sack, addr)
 
-			filepath = os.path.join("server_files", filename)
-			if os.path.exists(filepath):
-				error = build_packet(OP_ERROR, ER_FAE)
-				sock.sendto(error, addr)
-				pass
+			# wait for ACK seq=0
+			data, _ = sock.recvfrom(1024)
+			opcode, seq_num, _, _, _, _ = parse_packet(data)
 
-			else:
-				sack = build_packet(OP_SACK, 0) # Acts as ACK0, no need for ACK0 anymore
-				sock.sendto(sack, addr)
+			if opcode == OP_ACK and seq_num == 0:
+				file_data = b""
 
-				# wait for ACK seq=0
-				data, _ = sock.recvfrom(1024)
-				opcode, seq_num, _, _, _, _ = parse_packet(data)
+				sock.settimeout(5)
+				attempts = 0
 
-				if opcode == OP_ACK and seq_num == 0:
-					file_data = b""
-
-					while True:
+				while True:
+					try:
 						data, addr = sock.recvfrom(1024)
 						opcode, seq_num, _, checksum, payload, encrypted = parse_packet(data)
+						attempts = 0
 
 						if opcode == OP_DATA:
 
@@ -183,7 +166,20 @@ while True:  # Constant loop, listening for messages
 
 							finack = build_packet(OP_FINACK, 0)
 							sock.sendto(finack, addr)
-							break
+							sock.settimeout(None)
+							continue
 
 						elif opcode == OP_ERROR:
 							print_error(seq_num)
+
+					except socket.timeout:
+						attempts += 1
+						print("Timed out. Retrying...")
+						print(attempts)
+						
+						if attempts >= 5: # 5 attempts and timeout is called
+							error = build_packet(OP_ERROR, ER_TIMEOUT)
+							sock.sendto(error, addr)
+							print("Session timed out. Client unresponsive.")
+							sock.settimeout(None)
+							break

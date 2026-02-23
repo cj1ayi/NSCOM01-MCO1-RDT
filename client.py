@@ -46,40 +46,6 @@ else:
 
 
 
-
-
-# TERMINATION ====================================================
-# Closes socket and sends FIN
-def close_socket():
-
-	# Sending FIN. Three attempts before giving up
-	fin_sent = False
-	sock.settimeout(5)
-	for i in range(3):
-		try:
-			FIN = build_packet(OP_FIN, 0)
-			sock.sendto(FIN, server_addr)
-
-			data, _ = sock.recvfrom(1024)
-			opcode, ermsg, _, _, _, _ = parse_packet(data)
-
-			if opcode == OP_FINACK:
-				fin_sent = True
-				break
-
-			elif opcode == OP_ERROR:
-				print_error(ermsg)
-
-		except socket.timeout:
-			print("Failed to reach server. Retrying...")
-
-	if not fin_sent:
-		print("Error in reaching server. Server may be closed.")
-
-	sock.close()
-
-
-
 # DOWNLOAD (RRQ) ================================================
 def download():
 	filename = input("Enter filename of file to download: ").strip()
@@ -101,39 +67,66 @@ def download():
 		# send ACK seq=0 (so we dont have to use ACK#0 lol)
 		ack = build_packet(OP_ACK, 0)
 		sock.sendto(ack, server_addr)
-		# loop receiving data packets
 		file_data = b"" # store all chunks here
 
+		# Checking filesize VS free space
+		free_space = get_disk_space("downloads")
+		filesize = int(payload.decode())
+		if free_space < filesize:
+			print("Not enough space to download this file.")
+			error = build_packet(OP_ERROR, ER_SPACE)
+			sock.sendto(error, server_addr)
+			return
+
+		sock.settimeout(5)
+		attempts = 0 # when 5 attempts have happened and no reply, timeout error is called
+
+		# loop receiving data packets
 		while True:
-			data, _ = sock.recvfrom(1024)
-			opcode, seq_num, _, checksum, payload, encrypted = parse_packet(data)
+			try:
+				data, _ = sock.recvfrom(1024)
+				opcode, seq_num, _, checksum, payload, encrypted = parse_packet(data)
+				attempts = 0 # reset since packet was received
 
-			if opcode == OP_DATA:
+				if opcode == OP_DATA:
 
-				# verify checksum
-				if compute_checksum(encrypted) != checksum:
-					error = build_packet(OP_ERROR, ER_CHECKSUM)
+					# verify checksum
+					if compute_checksum(encrypted) != checksum:
+						error = build_packet(OP_ERROR, ER_CHECKSUM)
+						sock.sendto(error, server_addr)
+						continue # server retransmit
+
+					file_data += payload
+					ack = build_packet(OP_ACK, seq_num)
+					sock.sendto(ack, server_addr)
+
+				elif opcode == OP_FIN:
+					# save file
+					with open(f"downloads/{filename}", "wb") as f:
+						f.write(file_data)
+					print(f"Downloaded {filename} successfully!")
+					print("Press ENTER to continue.")
+					input()
+
+					finack = build_packet(OP_FINACK, 0)
+					sock.sendto(finack, server_addr)
+					sock.settimeout(None)
+					return
+
+				elif opcode == OP_ERROR:
+					print_error(seq_num)
+
+			except socket.timeout:
+				attempts += 1
+				
+				if attempts >= 5: # 5 attempts and timeout is called
+					error = build_packet(OP_ERROR, ER_TIMEOUT)
 					sock.sendto(error, server_addr)
-					continue # server retransmit
-
-				file_data += payload
-				ack = build_packet(OP_ACK, seq_num)
-				sock.sendto(ack, server_addr)
-
-			elif opcode == OP_FIN:
-				# save file
-				with open(f"downloads/{filename}", "wb") as f:
-					f.write(file_data)
-				print(f"Downloaded {filename} successfully!")
-				print("Press ENTER to continue.")
-				input()
-
-				finack = build_packet(OP_FINACK, 0)
-				sock.sendto(finack, server_addr)
-				return
-
-			elif opcode == OP_ERROR:
-				print_error(seq_num)
+					print("Session timed out. Server unresponsive.")
+					print("Press ENTER to continue.")
+					input()
+					sock.settimeout(None)
+					return
 
 
 
@@ -158,8 +151,8 @@ def upload():
 
 	else:
 		filesize = os.path.getsize(filepath)
-		payload = filename + " " + str(filesize)
-		wrq = build_packet(OP_WRQ, 0, payload.encode())
+		payload = filename.encode() + b'\x00' + str(filesize).encode()
+		wrq = build_packet(OP_WRQ, 0, payload)
 		sock.sendto(wrq, server_addr)
 
 		data, _ = sock.recvfrom(1024)
@@ -169,6 +162,7 @@ def upload():
 			print_error(ermsg)
 			print("Press ENTER to continue.")
 			input()
+			return
 
 		elif opcode == OP_SACK:
 			# send ACK seq=0 to confirm transfer start
@@ -231,29 +225,8 @@ def upload():
 
 
 
-
-
-	"""
-	wrq = build_packet(OP_WRQ, 0, filename.encode())
-	sock.sendto(wrq, server_addr)
-
-	data, _ = sock.recvfrom(1024)
-	opcode, ermsg, _, _, payload = parse_packet(data)
-
-	if opcode == OP_ERROR:
-		print_error(ermsg)
-		return
-
-	elif opcode == OP_SACK:
-		# wait for ack#0
-
-		while True:
-			"""
-
-
-
 # MAIN LOOP =======================================================
-while True and connected:
+while True:
 	print("\n\n================================================")
 	print("\nSelect action:")
 	print("[1] Download File")
@@ -275,8 +248,8 @@ while True and connected:
 
 		case "3":
 			print("Exiting program...")
-			close_socket()
-			connected = False
+			sock.close()
+			break
 
 		case _:
 			#incorrect input
